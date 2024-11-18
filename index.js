@@ -1,7 +1,5 @@
 import { ApolloServer } from "@apollo/server"
 import { startStandaloneServer } from "@apollo/server/standalone"
-import { Query } from "firebase/firestore"
-
 import connectDB from "./drivers/db.js"
 import mongoose from "mongoose"
 import BookModel from "./schemas/bookSchema.js"
