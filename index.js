@@ -55,88 +55,107 @@ const typeDefs = `#graphql
 // Resolvers
 const resolvers = {
   Query: {
-    authors: async () => await AuthorModel.find(),
-    books: async () => await BookModel.find(),
-    findById: async (parent, args) => await BookModel.findOne({ id: args.id }),
-    findByGenre: async (parent, args) => await BookModel.findOne({ genre: args.genre }),
-    findByYear: async (parent, args) => await BookModel.findOne({ year: args.year })
+    authors: async () => {
+      const authors = await AuthorModel.find().populate('books')
+      return authors.map(author => ({
+        ...author._doc,
+        books: author.books.map(book => ({
+          ...book._doc,
+          id: book.id.toString('hex')
+        }))
+      }));
+    },
+    books: async () => {
+      
+      const books = await BookModel.find().lean();
+      return books.map(book => ({
+        id: book._id.toString(), 
+        title: book.title,
+        pages: book.pages,
+        year: book.year,
+        genre: book.genre
+      }));
+    },
+    findById: async (parent, args) => await BookModel.findById(args.id),
+    findByGenre: async (parent, args) => await BookModel.find({ genre: args.genre }),
+    findByYear: async (parent, args) => await BookModel.find({ year: args.year })
   },
   Mutation: {
     createAuthor: async (_, { authorId, name, country, books }) => {
       const existingAuthor = await AuthorModel.findOne({ authorId })
 
-      if (existingAuthor) {
-        console.log("El autor ya está guardado")
-        throw new Error("El autor ya está agregado")
+if (existingAuthor) {
+  console.log("El autor ya está guardado")
+  throw new Error("El autor ya está agregado")
+}
+
+const newAuthor = new AuthorModel({
+  authorId,
+  name,
+  country,
+  books
+})
+
+
+await newAuthor.save()
+return newAuthor
+    },
+createBook: async (_, { id, title, authorId, pages, year, genre }) => {
+  const existingBook = await BookModel.findOne({ id });
+  if (existingBook) {
+    console.log("El libro ya está agregado");
+    throw new Error("El libro ya está agregado");
+  }
+
+  const newBook = new BookModel({
+    id,
+    title,
+    author: authorId,
+    pages,
+    year,
+    genre
+  });
+
+  await newBook.save();
+  return newBook;
+},
+  updateAuthor: async (_, { authorId, name, country, books }) => {
+    const updateData = {
+      ...(name && { name }),
+      ...(country && { country }),
+    };
+
+    // Actualiza los datos del autor
+    const updatedAuthor = await AuthorModel.findOneAndUpdate(
+      { authorId },
+      updateData,
+      { new: true }  // Devuelve el autor actualizado
+    );
+
+    // Verificar si se proporciona un ID de libro y si existe
+    if (books) {
+      const existingBook = await BookModel.findOne({ id: books }); // Verifica si el libro existe
+
+      if (!existingBook) {
+        console.log(`Book with ID ${books} does not exist.`);
+        return;
       }
 
-      const newAuthor = new AuthorModel({
-        authorId,
-        name,
-        country,
-        books
-      })
-
-
-      await newAuthor.save()
-      return newAuthor
-    },
-    createBook: async (_, { id, title, authorId, pages, year, genre }) => {
-      const existingBook = await BookModel.findOne({ id });
-      if (existingBook) {
-        console.log("El libro ya está agregado");
-        throw new Error("El libro ya está agregado");
-      }
-
-      const newBook = new BookModel({
-        id,
-        title,
-        author: authorId,
-        pages,
-        year,
-        genre
-      });
-
-      await newBook.save();
-      return newBook;
-    },
-    updateAuthor: async (_, { authorId, name, country, books }) => {
-      const updateData = {
-        ...(name && { name }),              // Actualiza el nombre si se proporciona
-        ...(country && { country }),        // Actualiza el país si se proporciona
-      };
-    
-      // Actualiza los datos del autor
-      const updatedAuthor = await AuthorModel.findOneAndUpdate(
+      // Si el libro existe, agregarlo a la lista de libros del autor
+      await AuthorModel.findOneAndUpdate(
         { authorId },
-        updateData,
-        { new: true }  // Devuelve el autor actualizado
+        { $addToSet: { books } } // Agrega el ID del libro a la lista de libros
       );
-    
-      // Verificar si se proporciona un ID de libro y si existe
-      if (books) {
-        const existingBook = await BookModel.findOne({ id: books }); // Verifica si el libro existe
-    
-        if (!existingBook) {
-          console.log(`Book with ID ${books} does not exist.`);
-          return; // Puedes decidir continuar o manejar el error
-        }
-    
-        // Si el libro existe, agregarlo a la lista de libros del autor
-        await AuthorModel.findOneAndUpdate(
-          { authorId },
-          { $addToSet: { books } } // Agrega el ID del libro a la lista de libros
-        );
-      }
-    
-      return {
-        authorId: updatedAuthor.authorId,
-        name: updatedAuthor.name,
-        country: updatedAuthor.country,
-        books: updatedAuthor.books  // Devuelve el array actualizado de libros
-      };
-    },
-    
+    }
+
+    return {
+      authorId: updatedAuthor.authorId,
+      name: updatedAuthor.name,
+      country: updatedAuthor.country,
+      books: updatedAuthor.books  // Devuelve el array actualizado de libros
+    };
+  },
+
     /**updateAuthor: async (_,{authorId, name, country, books}) => {
         const updateAuthor = await AuthorModel.findOneAndUpdate(
           { authorId },
@@ -158,20 +177,20 @@ const resolvers = {
 
       return updatedBook;
     },
-    deleteAuthor: async (_, { authorId }) => {
-      const deletedBook = await AuthorModel.findOneAndDelete({ authorId })
-      if (!deletedBook) {
-        throw new Error("Id no encontrado")
-      }
-      return `Author con ${authorId} eliminado exitosamente.`
-    },
-    deleteBook: async (_, { id }) => {
-      const deletedBook = await BookModel.findOneAndDelete({ id });
-      if (!deletedBook) {
-        throw new Error("Libro no encontrado");
-      }
-      return `Libro con id ${id} eliminado exitosamente.`;
-    }
+      deleteAuthor: async (_, { authorId }) => {
+        const deletedBook = await AuthorModel.findOneAndDelete({ authorId })
+        if (!deletedBook) {
+          throw new Error("Id no encontrado")
+        }
+        return `Author con ${authorId} eliminado exitosamente.`
+      },
+        deleteBook: async (_, { id }) => {
+          const deletedBook = await BookModel.findOneAndDelete({ id });
+          if (!deletedBook) {
+            throw new Error("Libro no encontrado");
+          }
+          return `Libro con id ${id} eliminado exitosamente.`;
+        }
   },
 };
 /*
