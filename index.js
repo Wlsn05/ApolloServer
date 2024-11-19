@@ -42,6 +42,7 @@ const typeDefs = `#graphql
   type Query {
     authors: [Author]
     books: [Book]
+    findByAuthorId(authorId:String!):Author
     findById(id:String!):Book
     findByGenre(genre:String!):Book
     findByYear(year:Int!):Book
@@ -76,6 +77,7 @@ const resolvers = {
         genre: book.genre
       }));
     },
+    findByAuthorId: async (parent, args) => await AuthorModel.findById(args.authorId).populate('books'),
     findById: async (parent, args) => await BookModel.findById(args.id),
     findByGenre: async (parent, args) => await BookModel.find({ genre: args.genre }),
     findByYear: async (parent, args) => await BookModel.find({ year: args.year })
